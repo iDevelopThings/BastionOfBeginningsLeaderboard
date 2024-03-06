@@ -47,7 +47,7 @@ func GetRankings(c *routing.Context) error {
 		return err
 	}
 
-	results, err := db.GetAllRankings(options.Validate())
+	results, err := db.GetAllRankingsPaginated(options.Validate())
 	if err != nil {
 		return err
 	}
