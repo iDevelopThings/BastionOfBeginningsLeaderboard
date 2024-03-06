@@ -10,20 +10,7 @@ import (
 )
 
 func PutResultEndpoint(c *routing.Context) error {
-	data := &struct {
-		Player db.SteamUserData `json:"player"`
-
-		GameStart int64 `json:"gameStart"`
-		GameEnd   int64 `json:"gameEnd"`
-
-		Waves []struct {
-			Start int64 `json:"start"`
-			End   int64 `json:"end"`
-		} `json:"waves"`
-
-		TotalGameTime   float64 `json:"totalGameTime"`
-		AverageWaveTime float64 `json:"averageWaveTime"`
-	}{}
+	var data db.GameResultRequestData
 
 	if err := c.Read(&data); err != nil {
 		return err // Handle error appropriately
@@ -34,18 +21,7 @@ func PutResultEndpoint(c *routing.Context) error {
 		return errors.New("steamId and steamName are required")
 	}
 
-	gameResult := &db.GameResult{
-		Player:          data.Player,
-		Waves:           make([]db.WaveData, len(data.Waves)),
-		GameStart:       data.GameStart,
-		GameEnd:         data.GameEnd,
-		TotalGameTime:   data.TotalGameTime,
-		AverageWaveTime: data.AverageWaveTime,
-	}
-	for i, wave := range data.Waves {
-		gameResult.Waves[i] = db.WaveData(wave)
-	}
-	gameResult.CalculateMetrics()
+	gameResult := db.NewGameResult(data)
 
 	collection := db.GetCollection[db.GameResult]()
 
@@ -60,13 +36,18 @@ func PutResultEndpoint(c *routing.Context) error {
 	}
 
 	return c.Write(map[string]interface{}{
-		"result":  insertResult.InsertedID,
+		"entryId": insertResult.InsertedID,
 		"ranking": gameRanking,
 	})
 }
 
 func GetRankings(c *routing.Context) error {
-	results, err := db.GetAllRankings()
+	var options db.GetRankingsOptions
+	if err := c.Read(&options); err != nil {
+		return err
+	}
+
+	results, err := db.GetAllRankings(options.Validate())
 	if err != nil {
 		return err
 	}

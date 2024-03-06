@@ -50,7 +50,7 @@ func main() {
 
 	api.Use(content.TypeNegotiator(content.JSON))
 
-	api.Get("/rankings", GetRankings)
+	api.Post("/rankings", GetRankings)
 	api.Post("/rankings/game-result", AuthHandler, PutResultEndpoint)
 
 	// router.Get("/", file.Content("ui/index.html"))
