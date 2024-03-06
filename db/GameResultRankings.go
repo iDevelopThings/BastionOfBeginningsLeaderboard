@@ -89,7 +89,10 @@ func GetRankingPipeline(options RankingPipelineOptions) mongo.Pipeline {
 			{"path", "$results"},
 			{"includeArrayIndex", "ranking"},
 		}}},
-		{{"$sort", bson.D{{"ranking", options.GetSortDirection()}}}},
+		{{"$sort", bson.D{
+			{"ranking", options.GetSortDirection()},
+			{"results._id", 1}, // Only exists to help mongo sort consistently
+		}}},
 	}
 
 	// Apply filters before pagination
@@ -166,15 +169,15 @@ func GetRankingPipeline(options RankingPipelineOptions) mongo.Pipeline {
 	}
 
 	if os.Getenv("DUMP_PIPELINE_JSON") == "true" {
-		options.DumpConfig()
-
-		// jsonBytes, err := bson.MarshalExtJSON(bson.M{"pipeline": finalPipeline}, false, false)
 		jsonBytes, err := bson.MarshalExtJSONIndent(bson.M{"pipeline": finalPipeline}, false, false, "  ", "  ")
 		if err != nil {
 			fmt.Println("Error marshaling to JSON:", err)
 		} else {
 			fmt.Println(string(jsonBytes))
 		}
+	}
+	if os.Getenv("DUMP_PIPELINE_OPTIONS") == "true" {
+		options.DumpConfig()
 	}
 
 	return finalPipeline
