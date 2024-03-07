@@ -2,12 +2,14 @@ package db
 
 import (
 	"errors"
-	"fmt"
 	"os"
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
+
+	"bob-leaderboard/app"
+	"bob-leaderboard/app/logger"
 )
 
 type GetRankingsPagination struct {
@@ -49,11 +51,24 @@ type RankingPipelineOptions struct {
 }
 
 func (o RankingPipelineOptions) DumpConfig() {
-	fmt.Println("Dumping ranking pipeline options")
-	fmt.Println("Filters:", o.Filters)
-	fmt.Println("SortDirection:", o.SortDirection)
-	fmt.Println("Pagination:", o.GetRankingsPagination)
-	fmt.Println("UsePagination:", o.UsePagination)
+	logger.Debug("Dumping ranking pipeline options")
+	logger.Debug("Filters: %v", o.Filters)
+	logger.Debug("SortDirection: %v", o.SortDirection)
+	logger.Debug("Pagination: %v", o.GetRankingsPagination)
+	logger.Debug("UsePagination: %v", o.UsePagination)
+}
+func (o RankingPipelineOptions) BuildFilters() mongo.Pipeline {
+	var filteringPipeline mongo.Pipeline
+	if steamName, ok := o.Filters["steamName"].(string); ok && steamName != "" {
+		filteringPipeline = addFilterStage(filteringPipeline, "player.steamName", bson.D{{"$regex", steamName}, {"$options", "i"}})
+	}
+	if steamId, ok := o.Filters["steamId"].(string); ok && steamId != "" {
+		filteringPipeline = addFilterStage(filteringPipeline, "results.player.steamId", steamId)
+	}
+	if gameId, ok := o.Filters["gameId"].(string); ok && gameId != "" {
+		filteringPipeline = addGameIdFilter(filteringPipeline, gameId)
+	}
+	return filteringPipeline
 }
 
 type RankingResultsItem struct {
@@ -78,58 +93,57 @@ var LeaderboardRankingAggregationSort = bson.D{
 	{"totalGameTime", 1},    // Ascending order
 }
 
-func GetRankingPipeline(options RankingPipelineOptions) mongo.Pipeline {
-	basePipeline := mongo.Pipeline{
-		{{"$sort", LeaderboardRankingAggregationSort}},
-		{{"$group", bson.D{
-			{"_id", primitive.Null{}},
-			{"results", bson.D{{"$push", "$$ROOT"}}},
-		}}},
-		{{"$unwind", bson.D{
-			{"path", "$results"},
-			{"includeArrayIndex", "ranking"},
-		}}},
-		{{"$sort", bson.D{
+func addFilterStage(filteringPipeline mongo.Pipeline, filterKey string, match interface{}) mongo.Pipeline {
+	return append(filteringPipeline, bson.D{
+		{"$match", bson.D{{filterKey, match}}},
+	})
+}
+
+// Specific function for gameId to handle conversion and error
+func addGameIdFilter(filteringPipeline mongo.Pipeline, gameId string) mongo.Pipeline {
+	oid, err := primitive.ObjectIDFromHex(gameId)
+	if err != nil {
+		logger.Error("Error parsing game ID:", err)
+		return filteringPipeline // Optionally return error
+	}
+	return append(filteringPipeline, bson.D{
+		{"$match", bson.D{{"results._id", oid}}},
+	})
+}
+
+// Split functionality into smaller, more readable parts
+func buildBasePipeline(filteringPipeline mongo.Pipeline, options RankingPipelineOptions) mongo.Pipeline {
+	basePipeline := append(filteringPipeline,
+		bson.D{{"$sort", LeaderboardRankingAggregationSort}},
+		bson.D{{"$group", bson.D{
+			{"_id", primitive.Null{}}, {"results", bson.D{{"$push", "$$ROOT"}}}},
+		}},
+		bson.D{{"$unwind", bson.D{
+			{"path", "$results"}, {"includeArrayIndex", "ranking"}},
+		}},
+		bson.D{{"$sort", bson.D{
 			{"ranking", options.GetSortDirection()},
 			{"results._id", 1}, // Only exists to help mongo sort consistently
 		}}},
-	}
+	)
+	return basePipeline
+}
 
-	// Apply filters before pagination
-	if steamName, ok := options.Filters["steamName"].(string); ok && steamName != "" {
-		basePipeline = append(basePipeline, bson.D{
-			{"$match", bson.D{{"player.steamName", bson.D{{"$regex", steamName}, {"$options", "i"}}}}},
-		})
-	}
-	if steamId, ok := options.Filters["steamId"].(string); ok && steamId != "" {
-		basePipeline = append(basePipeline, bson.D{
-			{"$match", bson.D{{"results.player.steamId", steamId}}},
-		})
-	}
-	if gameId, ok := options.Filters["gameId"].(string); ok && gameId != "" {
-		oid, err := primitive.ObjectIDFromHex(gameId)
-		if err != nil {
-			fmt.Println("Error parsing game ID:", err)
-		} else {
-			basePipeline = append(basePipeline, bson.D{
-				{"$match", bson.D{{"results._id", oid}}},
-			})
-		}
-	}
+func GetRankingPipeline(options RankingPipelineOptions) mongo.Pipeline {
+	filteringPipeline := options.BuildFilters()
+	basePipeline := buildBasePipeline(filteringPipeline, options)
 
-	projections := bson.D{
-		{"$project", bson.D{
-			{"ranking", 1},
-			{"_id", 0},
-			{"player.steamId", "$results.player.steamId"},
-			{"player.steamName", "$results.player.steamName"},
-			{"averageWaveTime", "$results.averageWaveTime"},
-			{"gameEnd", "$results.gameEnd"},
-			{"gameStart", "$results.gameStart"},
-			{"totalGameTime", "$results.totalGameTime"},
-			{"wavesSurvived", "$results.wavesSurvived"},
-		}},
-	}
+	projections := bson.D{{"$project", bson.D{
+		{"ranking", 1},
+		{"_id", 0},
+		{"player.steamId", "$results.player.steamId"},
+		{"player.steamName", "$results.player.steamName"},
+		{"averageWaveTime", "$results.averageWaveTime"},
+		{"gameEnd", "$results.gameEnd"},
+		{"gameStart", "$results.gameStart"},
+		{"totalGameTime", "$results.totalGameTime"},
+		{"wavesSurvived", "$results.wavesSurvived"},
+	}}}
 
 	facetStage := bson.D{
 		{"$facet", bson.M{
@@ -168,17 +182,7 @@ func GetRankingPipeline(options RankingPipelineOptions) mongo.Pipeline {
 		finalPipeline = append(finalPipeline, projections)
 	}
 
-	if os.Getenv("DUMP_PIPELINE_JSON") == "true" {
-		jsonBytes, err := bson.MarshalExtJSONIndent(bson.M{"pipeline": finalPipeline}, false, false, "  ", "  ")
-		if err != nil {
-			fmt.Println("Error marshaling to JSON:", err)
-		} else {
-			fmt.Println(string(jsonBytes))
-		}
-	}
-	if os.Getenv("DUMP_PIPELINE_OPTIONS") == "true" {
-		options.DumpConfig()
-	}
+	dumpPipeline(finalPipeline, options)
 
 	return finalPipeline
 }
@@ -235,4 +239,27 @@ func getPipelineResult(pipeline mongo.Pipeline, collection *Collection[GameResul
 	}
 
 	return PaginatedRankingResults{}, nil
+}
+
+func dumpPipeline(pipeline mongo.Pipeline, options RankingPipelineOptions) {
+	dumpJson := app.Config.GetBool("RankingSystem.DumpJson")
+	dumpJsonFile := app.Config.GetBool("RankingSystem.DumpJsonFile")
+	if dumpJson || dumpJsonFile {
+		jsonBytes, err := bson.MarshalExtJSONIndent(bson.M{"pipeline": pipeline}, false, false, "  ", "  ")
+		if err != nil {
+			logger.Error("Error marshaling to JSON:", err)
+		} else {
+			logger.Debug("Ranking pipeline JSON:")
+			logger.Debug(string(jsonBytes))
+		}
+
+		if dumpJsonFile {
+			if err := os.WriteFile("ranking_pipeline.json", jsonBytes, 0644); err != nil {
+				logger.Error("Error writing JSON to file:", err)
+			}
+		}
+	}
+	if app.Config.GetBool("RankingSystem.DumpOptions") {
+		options.DumpConfig()
+	}
 }

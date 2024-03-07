@@ -1,1 +1,4 @@
 .env
+conf/credentials.json
+/app.log
+/bob-leaderboard.exe

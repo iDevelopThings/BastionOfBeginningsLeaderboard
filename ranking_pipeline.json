@@ -1,0 +1,84 @@
+{
+  "pipeline": [
+    {
+      "$sort": {
+        "wavesSurvived": -1,
+        "averageWaveTime": -1,
+        "totalGameTime": 1
+      }
+    },
+    {
+      "$group": {
+        "_id": null,
+        "results": {
+          "$push": "$$ROOT"
+        }
+      }
+    },
+    {
+      "$unwind": {
+        "path": "$results",
+        "includeArrayIndex": "ranking"
+      }
+    },
+    {
+      "$sort": {
+        "ranking": 1,
+        "results._id": 1
+      }
+    },
+    {
+      "$facet": {
+        "totalCount": [
+          {
+            "$count": "total"
+          }
+        ],
+        "paginatedResults": [
+          {
+            "$skip": 0
+          },
+          {
+            "$limit": 20
+          },
+          {
+            "$project": {
+              "ranking": 1,
+              "_id": 0,
+              "player.steamId": "$results.player.steamId",
+              "player.steamName": "$results.player.steamName",
+              "averageWaveTime": "$results.averageWaveTime",
+              "gameEnd": "$results.gameEnd",
+              "gameStart": "$results.gameStart",
+              "totalGameTime": "$results.totalGameTime",
+              "wavesSurvived": "$results.wavesSurvived"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "$project": {
+        "data": "$paginatedResults",
+        "pagination": {
+          "$arrayElemAt": [
+            "$totalCount",
+            0
+          ]
+        }
+      }
+    },
+    {
+      "$addFields": {
+        "pagination.max": {
+          "$ceil": {
+            "$divide": [
+              "$pagination.total",
+              20
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

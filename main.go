@@ -2,9 +2,7 @@ package main
 
 import (
 	"errors"
-	"log"
 	"net/http"
-	"os"
 
 	routing "github.com/go-ozzo/ozzo-routing"
 	"github.com/go-ozzo/ozzo-routing/access"
@@ -12,14 +10,15 @@ import (
 	"github.com/go-ozzo/ozzo-routing/content"
 	"github.com/go-ozzo/ozzo-routing/fault"
 	"github.com/go-ozzo/ozzo-routing/slash"
-	"github.com/joho/godotenv"
 
+	"bob-leaderboard/app"
+	"bob-leaderboard/app/logger"
 	"bob-leaderboard/db"
 )
 
 func AuthHandler(c *routing.Context) error {
 	return auth.Bearer(func(c *routing.Context, token string) (auth.Identity, error) {
-		if token == os.Getenv("API_SECRET") {
+		if token == app.Config.GetString("ApiSecret") {
 			return auth.Identity("LeaderboardApi"), nil
 		}
 		return nil, errors.New("invalid credential")
@@ -27,20 +26,21 @@ func AuthHandler(c *routing.Context) error {
 }
 
 func main() {
-	err := godotenv.Load()
-	if err != nil {
-		log.Fatal("Error loading .env file")
-	}
-	db.CreateConnection()
+	app.Init()
+
+	db.CreateConnection(
+		app.Config.GetString("MongoUri"),
+		app.Config.GetString("MongoDatabaseName"),
+	)
 
 	router := routing.New()
 
 	router.Use(
-		access.Logger(log.Printf),
+		access.Logger(logger.Debug),
 		slash.Remover(http.StatusMovedPermanently),
-		fault.Recovery(log.Printf),
-		fault.ErrorHandler(log.Printf),
-		fault.PanicHandler(log.Printf),
+		fault.Recovery(logger.Error),
+		fault.ErrorHandler(logger.Error),
+		fault.PanicHandler(logger.Error),
 	)
 
 	// encodedStr := base64.StdEncoding.EncodeToString([]byte(os.Getenv("API_SECRET")))
@@ -60,9 +60,9 @@ func main() {
 
 	http.Handle("/", router)
 
-	listenAddr := os.Getenv("HTTP_LISTEN_ADDR")
+	listenAddr := app.Config.GetString("Api.ListenAddr")
 
-	log.Printf("Listening on: http://localhost%s", listenAddr)
+	logger.Debug("Listening on: http://localhost%s", listenAddr)
 
 	http.ListenAndServe(listenAddr, nil)
 }

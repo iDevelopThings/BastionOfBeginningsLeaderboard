@@ -33,9 +33,11 @@
         <method importPath="arc/utilities" receiver="*IndentWriter" name="Write" />
         <method importPath="io" receiver="ReadCloser" name="Close" />
         <method importPath="go.mongodb.org/mongo-driver/mongo" receiver="*Cursor" name="Close" />
+        <method importPath="github.com/go-ozzo/ozzo-config" receiver="*Config" name="Register" />
       </methods>
     </inspection_tool>
     <inspection_tool class="GrazieInspection" enabled="true" level="TEXT ATTRIBUTES" enabled_by_default="true" editorAttributes="NOT_USED_ELEMENT_ATTRIBUTES" />
+    <inspection_tool class="JsonSchemaCompliance" enabled="false" level="WARNING" enabled_by_default="false" />
     <inspection_tool class="LanguageDetectionInspection" enabled="true" level="TEXT ATTRIBUTES" enabled_by_default="true" editorAttributes="NOT_USED_ELEMENT_ATTRIBUTES" />
     <inspection_tool class="SpellCheckingInspection" enabled="true" level="TEXT ATTRIBUTES" enabled_by_default="true" editorAttributes="NOT_USED_ELEMENT_ATTRIBUTES">
       <option name="processCode" value="true" />

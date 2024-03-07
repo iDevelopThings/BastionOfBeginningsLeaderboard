@@ -1,0 +1,26 @@
+{
+  "RankingSystem": {
+    "DumpJson": true,
+    "DumpJsonFile": true,
+    "DumpOptions": true
+  },
+  "Api": {
+    "ListenAddr": ":6969"
+  },
+  "Logger": {
+    "Targets": [
+      {
+        "type": "ConsoleTarget",
+        "MaxLevel": 7,
+        "ColorMode": true
+      },
+      {
+        "type": "FileTarget",
+        "FileName": "app.log",
+        "MaxLevel": 4,
+        "Rotate": true,
+        "BackupCount": 3
+      }
+    ]
+  }
+}
