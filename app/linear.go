@@ -259,8 +259,6 @@ type LinearIssueWebhookData struct {
 	Title               string        `json:"title"`
 	Priority            int           `json:"priority"`
 	Estimate            int           `json:"estimate"`
-	BoardOrder          int           `json:"boardOrder"`
-	SortOrder           int           `json:"sortOrder"`
 	LabelIds            []string      `json:"labelIds"`
 	TeamId              string        `json:"teamId"`
 	PreviousIdentifiers []interface{} `json:"previousIdentifiers"`
