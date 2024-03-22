@@ -111,11 +111,11 @@ func LoadAllIssues() error {
 		Variables: map[string]interface{}{
 			"teamId":  "BAS",
 			"orderBy": "updatedAt",
-			"filter": map[string]interface{}{
+			/*"filter": map[string]interface{}{
 				"parent": map[string]interface{}{
 					"null": true,
 				},
-			},
+			},*/
 		},
 	}
 
