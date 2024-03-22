@@ -2,13 +2,17 @@ package app
 
 import (
 	"bytes"
+	"crypto/hmac"
+	"crypto/sha256"
 	"encoding/json"
+	"fmt"
 	"html/template"
 	"io"
 	"net/http"
 	"os"
 	"time"
 
+	routing "github.com/go-ozzo/ozzo-routing"
 	"github.com/yuin/goldmark"
 
 	"bob-leaderboard/app/logger"
@@ -47,25 +51,25 @@ type LinearIssuesResponse struct {
 }
 
 type Issue struct {
-	Identifier      string `json:"identifier"`
-	Title           string `json:"title"`
-	Description     string `json:"description"`
-	DescriptionHTML template.HTML
-	State           State       `json:"state"`
-	Labels          []Label     `json:"labels"`
-	CompletedAt     *time.Time  `json:"completedAt,omitempty"` // Pointer to handle nil (not completed) case
-	Parent          interface{} `json:"parent"`
+	Identifier  string     `json:"identifier"`
+	Title       string     `json:"title"`
+	State       State      `json:"state"`
+	Labels      []Label    `json:"labels"`
+	CompletedAt *time.Time `json:"completedAt,omitempty"` // Pointer to handle nil (not completed) case
 }
 
 // Label representation for simplified structure.
 type Label struct {
-	Name  string `json:"name"`
-	Color string `json:"color"`
+	Id    string `json:"id,omitempty"`
+	Name  string `json:"name,omitempty"`
+	Color string `json:"color,omitempty"`
 }
 
 type State struct {
-	Name  string `json:"name"`
-	Color string `json:"color"`
+	Id    string `json:"id,omitempty"`
+	Color string `json:"color,omitempty"`
+	Name  string `json:"name,omitempty"`
+	Type  string `json:"type,omitempty"`
 }
 
 // StateGroup represents a group of issues by their state.
@@ -215,18 +219,17 @@ func OrganizeIssues(response LinearIssuesResponse) {
 
 		// Construct the simplified issue
 		issue := Issue{
-			Identifier:  node.Identifier,
-			Title:       node.Title,
-			Description: node.Description,
-			Labels:      labels,
-			Parent:      node.Parent,
+			Identifier: node.Identifier,
+			Title:      node.Title,
+			Labels:     labels,
 		}
-		descriptionHTML, err := ConvertMarkdownToHTML([]byte(node.Description))
+
+		/*descriptionHTML, err := ConvertMarkdownToHTML([]byte(node.Description))
 		if err != nil {
 			logger.Error("Error converting markdown to HTML: %v", err)
 		} else {
 			issue.DescriptionHTML = template.HTML(descriptionHTML)
-		}
+		}*/
 
 		if !node.CompletedAt.IsZero() {
 			issue.CompletedAt = &node.CompletedAt
@@ -245,4 +248,172 @@ func ConvertMarkdownToHTML(markdown []byte) (string, error) {
 		return "", err
 	}
 	return buf.String(), nil
+}
+
+type LinearIssueWebhookData struct {
+	Id                  string        `json:"id"`
+	CreatedAt           time.Time     `json:"createdAt"`
+	UpdatedAt           time.Time     `json:"updatedAt"`
+	CompletedAt         time.Time     `json:"completedAt"`
+	Number              int           `json:"number"`
+	Title               string        `json:"title"`
+	Priority            int           `json:"priority"`
+	Estimate            int           `json:"estimate"`
+	BoardOrder          int           `json:"boardOrder"`
+	SortOrder           int           `json:"sortOrder"`
+	LabelIds            []string      `json:"labelIds"`
+	TeamId              string        `json:"teamId"`
+	PreviousIdentifiers []interface{} `json:"previousIdentifiers"`
+	CreatorId           string        `json:"creatorId"`
+	AssigneeId          string        `json:"assigneeId"`
+	StateId             string        `json:"stateId"`
+	PriorityLabel       string        `json:"priorityLabel"`
+	BotActor            struct {
+		Id        string `json:"id"`
+		Type      string `json:"type"`
+		Name      string `json:"name"`
+		AvatarUrl string `json:"avatarUrl"`
+	} `json:"botActor"`
+	Identifier string `json:"identifier"`
+	Url        string `json:"url"`
+	Assignee   struct {
+		Id   string `json:"id"`
+		Name string `json:"name"`
+	} `json:"assignee"`
+	State State `json:"state"`
+	Team  struct {
+		Id   string `json:"id"`
+		Key  string `json:"key"`
+		Name string `json:"name"`
+	} `json:"team"`
+	SubscriberIds []string `json:"subscriberIds"`
+	Labels        []Label  `json:"labels"`
+}
+
+type LinearWebhookBody struct {
+	Action string `json:"action"`
+	Actor  struct {
+		Id   string `json:"id"`
+		Name string `json:"name"`
+	} `json:"actor"`
+	CreatedAt        time.Time              `json:"createdAt"`
+	Data             LinearIssueWebhookData `json:"data"`
+	Url              string                 `json:"url"`
+	Type             string                 `json:"type"`
+	OrganizationId   string                 `json:"organizationId"`
+	WebhookTimestamp int64                  `json:"webhookTimestamp"`
+	WebhookId        string                 `json:"webhookId"`
+}
+
+func HandleLinearWebhooks(c *routing.Context) error {
+	body, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		logger.Error("Error reading request body: %v", err)
+		return err
+	}
+	defer c.Request.Body.Close()
+
+	signature := hmac.New(sha256.New, []byte(os.Getenv("LINEAR_WEBHOOK_SECRET")))
+	signature.Write(body)
+	expectedSig := fmt.Sprintf("%x", signature.Sum(nil))
+	if expectedSig != c.Request.Header.Get("linear-signature") {
+		return routing.NewHTTPError(http.StatusBadRequest, "Invalid signature")
+	}
+
+	var webhooks LinearWebhookBody
+	if err := c.Read(&webhooks); err != nil {
+		return err
+	}
+
+	UpdateIssuesFromWebhook(webhooks)
+
+	return c.Write(map[string]interface{}{"status": "ok"})
+}
+
+func UpdateIssuesFromWebhook(data LinearWebhookBody) {
+	switch data.Action {
+	case "create":
+		{
+			for i, group := range *IssuesData {
+				if group.Name != data.Data.State.Name {
+					continue
+				}
+
+				issue := Issue{
+					Identifier:  data.Data.Identifier,
+					Title:       data.Data.Title,
+					State:       data.Data.State,
+					Labels:      data.Data.Labels,
+					CompletedAt: nil,
+				}
+
+				if !data.Data.CompletedAt.IsZero() {
+					issue.CompletedAt = &data.Data.CompletedAt
+				}
+
+				(*IssuesData)[i].Items = append((*IssuesData)[i].Items, issue)
+
+				break
+			}
+
+			break
+		}
+	case "update":
+		{
+			for i, group := range *IssuesData {
+				if group.Name != data.Data.State.Name {
+					continue
+				}
+
+				for itemIdx, item := range group.Items {
+					if item.Identifier != data.Data.Identifier {
+						continue
+					}
+
+					item.Title = data.Data.Title
+					item.Labels = data.Data.Labels
+					item.State = data.Data.State
+					item.CompletedAt = nil
+					if !data.Data.CompletedAt.IsZero() {
+						item.CompletedAt = &data.Data.CompletedAt
+					}
+
+					(*IssuesData)[i].Items[itemIdx] = item
+
+					break
+				}
+
+				break
+			}
+
+			break
+		}
+	case "remove":
+		{
+			for i, group := range *IssuesData {
+				if group.Name != data.Data.State.Name {
+					continue
+				}
+
+				locatedItemIdx := -1
+
+				for itemIdx, item := range group.Items {
+					if item.Identifier != data.Data.Identifier {
+						continue
+					}
+					locatedItemIdx = itemIdx
+					break
+				}
+
+				if locatedItemIdx != -1 {
+					(*IssuesData)[i].Items = append((*IssuesData)[i].Items[:locatedItemIdx], (*IssuesData)[i].Items[locatedItemIdx+1:]...)
+				}
+
+				break
+			}
+
+			break
+		}
+
+	}
 }

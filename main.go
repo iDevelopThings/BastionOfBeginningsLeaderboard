@@ -67,6 +67,7 @@ func main() {
 
 	api.Use(content.TypeNegotiator(content.JSON))
 
+	api.Post("/webhooks/linear", app.HandleLinearWebhooks)
 	api.Post("/rankings", GetRankings)
 	api.Post("/rankings/game-result", AuthHandler, PutResultEndpoint)
 
