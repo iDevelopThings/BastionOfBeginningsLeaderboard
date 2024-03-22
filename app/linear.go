@@ -321,7 +321,8 @@ func HandleLinearWebhooks(c *routing.Context) error {
 	}
 
 	var webhooks LinearWebhookBody
-	if err := c.Read(&webhooks); err != nil {
+	if err := json.Unmarshal(body, &webhooks); err != nil {
+		logger.Error("Error unmarshalling webhook body: %v", err)
 		return err
 	}
 
