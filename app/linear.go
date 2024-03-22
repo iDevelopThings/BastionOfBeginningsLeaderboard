@@ -366,30 +366,61 @@ func UpdateIssuesFromWebhook(data LinearWebhookBody) {
 		}
 	case "update":
 		{
-			for i, group := range *IssuesData {
-				if group.Name != data.Data.State.Name {
-					continue
-				}
+			groupIdx := -1
+			newGroupIdx := -1
+			itemIdx := -1
+			for gIdx, group := range *IssuesData {
+				// if group.Name != data.Data.State.Name {
+				// 	continue
+				// }
 
-				for itemIdx, item := range group.Items {
+				for iIdx, item := range group.Items {
 					if item.Identifier != data.Data.Identifier {
 						continue
 					}
 
-					item.Title = data.Data.Title
-					item.Labels = data.Data.Labels
-					item.State = data.Data.State
-					item.CompletedAt = nil
-					if !data.Data.CompletedAt.IsZero() {
-						item.CompletedAt = &data.Data.CompletedAt
-					}
+					groupIdx = gIdx
+					itemIdx = iIdx
+					/*	item.Title = data.Data.Title
+						item.Labels = data.Data.Labels
+						item.State = data.Data.State
+						item.CompletedAt = nil
+						if !data.Data.CompletedAt.IsZero() {
+							item.CompletedAt = &data.Data.CompletedAt
+						}
 
-					(*IssuesData)[i].Items[itemIdx] = item
+						(*IssuesData)[gIdx].Items[iIdx] = item
+					*/
 
 					break
 				}
 
-				break
+				if groupIdx != -1 && itemIdx != -1 {
+					break
+				}
+			}
+
+			for gIdx, group := range *IssuesData {
+				if group.Name == data.Data.State.Name {
+					newGroupIdx = gIdx
+					break
+				}
+			}
+
+			if groupIdx != -1 && itemIdx != -1 && newGroupIdx != -1 {
+				item := (*IssuesData)[groupIdx].Items[itemIdx]
+				item.Title = data.Data.Title
+				item.Labels = data.Data.Labels
+				item.State = data.Data.State
+				item.CompletedAt = nil
+				if !data.Data.CompletedAt.IsZero() {
+					item.CompletedAt = &data.Data.CompletedAt
+				}
+
+				// Remove from the old group
+				(*IssuesData)[groupIdx].Items = append((*IssuesData)[groupIdx].Items[:itemIdx], (*IssuesData)[groupIdx].Items[itemIdx+1:]...)
+				// Add to the new group
+				(*IssuesData)[newGroupIdx].Items = append((*IssuesData)[newGroupIdx].Items, item)
 			}
 
 			break
