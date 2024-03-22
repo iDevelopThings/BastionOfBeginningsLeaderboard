@@ -1,11 +1,10 @@
 package main
 
 import (
-	"errors"
-
 	routing "github.com/go-ozzo/ozzo-routing"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 
+	"bob-leaderboard/app/logger"
 	"bob-leaderboard/db"
 )
 
@@ -16,12 +15,23 @@ func PutResultEndpoint(c *routing.Context) error {
 		return err // Handle error appropriately
 	}
 
+	logger.Debug("Steam Auth Ticket: %s", c.Request.Header.Get("Steam-Auth-Ticket"))
+
 	if data.Player.SteamId == "" || data.Player.Name == "" {
-		c.Response.WriteHeader(400)
-		return errors.New("steamId and steamName are required")
+		return routing.NewHTTPError(400, "steamId and steamName are required")
 	}
 
 	gameResult := db.NewGameResult(data)
+
+	if len(gameResult.WaveTimes) <= 0 {
+		return routing.NewHTTPError(400, "waveDurations are required")
+	}
+	if gameResult.WavesSurvived <= 0 {
+		return routing.NewHTTPError(400, "wavesSurvived must be greater than 0")
+	}
+	if gameResult.TotalGameTime <= 0 {
+		return routing.NewHTTPError(400, "totalGameTime must be greater than 0")
+	}
 
 	collection := db.GetCollection[db.GameResult]()
 

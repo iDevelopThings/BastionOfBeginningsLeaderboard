@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"html/template"
 	"net/http"
 
 	routing "github.com/go-ozzo/ozzo-routing"
@@ -9,12 +10,27 @@ import (
 	"github.com/go-ozzo/ozzo-routing/auth"
 	"github.com/go-ozzo/ozzo-routing/content"
 	"github.com/go-ozzo/ozzo-routing/fault"
+	"github.com/go-ozzo/ozzo-routing/file"
 	"github.com/go-ozzo/ozzo-routing/slash"
 
 	"bob-leaderboard/app"
 	"bob-leaderboard/app/logger"
 	"bob-leaderboard/db"
 )
+
+type SharedPageData struct {
+	Title       string
+	Description string
+	SteamURL    string
+}
+type LandingPage struct {
+	SharedPageData
+}
+
+type RoadMapPage struct {
+	SharedPageData
+	Issues app.OrganizedIssues
+}
 
 func AuthHandler(c *routing.Context) error {
 	return auth.Bearer(func(c *routing.Context, token string) (auth.Identity, error) {
@@ -53,10 +69,39 @@ func main() {
 	api.Post("/rankings", GetRankings)
 	api.Post("/rankings/game-result", AuthHandler, PutResultEndpoint)
 
-	// router.Get("/", file.Content("ui/index.html"))
-	// router.Get("/app/*", file.Server(file.PathMap{
-	// 	"/": "/ui/",
-	// }))
+	router.Get("/", func(c *routing.Context) error {
+		data := LandingPage{
+			SharedPageData{
+				"Bastion Of Beginnings",
+				".",
+				app.Config.GetString("SteamUrl"),
+			},
+		}
+		return CreatePageTemplate(c, "index", data)
+	})
+	router.Get("/roadmap", func(c *routing.Context) error {
+		if app.IssuesData == nil {
+			if err := app.LoadAllIssues(); err != nil {
+				return err
+			}
+		}
+
+		data := RoadMapPage{
+			SharedPageData{
+				"RoadMap",
+				"...",
+				app.Config.GetString("SteamUrl"),
+			},
+			*app.IssuesData,
+		}
+
+		return CreatePageTemplate(c, "roadmap", data)
+	})
+
+	router.Get("/*", file.Server(file.PathMap{
+		"/dist":   "/public/dist/",
+		"/images": "/public/images/",
+	}))
 
 	http.Handle("/", router)
 
@@ -65,4 +110,13 @@ func main() {
 	logger.Debug("Listening on: http://localhost%s", listenAddr)
 
 	http.ListenAndServe(listenAddr, nil)
+}
+
+func CreatePageTemplate(c *routing.Context, templateName string, data any) error {
+	tmpl, err := template.ParseFiles("frontend/src/" + templateName + ".gohtml")
+	if err != nil {
+		return err // Handle the error according to your application's needs
+	}
+
+	return tmpl.Execute(c.Response, data)
 }

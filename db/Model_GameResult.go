@@ -1,34 +1,28 @@
 package db
 
 import (
-	"time"
-
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
+type ExtraGameStatsData struct {
+	DamageDealt       float64 `json:"damageDealt" bson:"damageDealt"`
+	EnemiesKilled     int     `json:"enemiesKilled" bson:"enemiesKilled"`
+	EssenceHarvested  float64 `json:"essenceHarvested" bson:"essenceHarvested"`
+	EssenceSpent      float64 `json:"essenceSpent" bson:"essenceSpent"`
+	TowersBuilt       int     `json:"towersBuilt" bson:"towersBuilt"`
+	UpgradesPurchased int     `json:"upgradesPurchased" bson:"upgradesPurchased"`
+}
+
 type GameResultRequestData struct {
+	ExtraGameStatsData
+
 	Player SteamUserData `json:"player"`
-
-	GameStart int64 `json:"gameStart"`
-	GameEnd   int64 `json:"gameEnd"`
-
-	Waves []struct {
-		Start int64 `json:"start"`
-		End   int64 `json:"end"`
-	} `json:"waves"`
-
-	TotalGameTime   float64 `json:"totalGameTime"`
-	AverageWaveTime float64 `json:"averageWaveTime"`
+	Waves  []float64     `json:"waveDurations"`
 }
 
 type SteamUserData struct {
 	SteamId string `json:"steamId" bson:"steamId"`
 	Name    string `json:"steamName" bson:"steamName"`
-}
-
-type WaveData struct {
-	Start int64 `json:"start" bson:"start"`
-	End   int64 `json:"end" bson:"end"`
 }
 
 type GameResult struct {
@@ -39,37 +33,32 @@ type GameResult struct {
 	WavesSurvived int       `json:"wavesSurvived" bson:"wavesSurvived"`
 	WaveTimes     []float64 `json:"waveTimes" bson:"waveTimes"`
 
-	GameStart int64 `json:"gameStart" bson:"gameStart"`
-	GameEnd   int64 `json:"gameEnd" bson:"gameEnd"`
-
 	TotalGameTime   float64 `json:"totalGameTime" bson:"totalGameTime"`
 	AverageWaveTime float64 `json:"averageWaveTime" bson:"averageWaveTime"`
+
+	Extra ExtraGameStatsData `json:",inline" bson:",inline"`
 }
 
 func NewGameResult(data GameResultRequestData) *GameResult {
 	d := &GameResult{
 		Player:        data.Player,
 		WaveTimes:     []float64{},
-		GameStart:     data.GameStart,
-		GameEnd:       data.GameEnd,
-		TotalGameTime: time.Unix(data.GameEnd, 0).Sub(time.Unix(data.GameStart, 0)).Seconds(),
+		TotalGameTime: 0,
 	}
 
 	var totalWaveTime float64 = 0
-	for _, wave := range data.Waves {
-		start := time.Unix(wave.Start, 0)
-		end := time.Unix(wave.End, 0)
-		wTime := end.Sub(start).Seconds()
-		if wTime <= 0 {
+	for _, durationSeconds := range data.Waves {
+		if durationSeconds <= 0 {
 			continue
 		}
-
-		d.WaveTimes = append(d.WaveTimes, wTime)
+		d.WaveTimes = append(d.WaveTimes, durationSeconds)
 		d.WavesSurvived++
-		totalWaveTime += wTime
+		totalWaveTime += durationSeconds
 	}
 
 	d.AverageWaveTime = totalWaveTime / float64(d.WavesSurvived)
+	d.TotalGameTime = totalWaveTime
+	d.Extra = data.ExtraGameStatsData
 
 	return d
 }

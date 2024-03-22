@@ -2,3 +2,5 @@
 conf/credentials.json
 /app.log
 /bob-leaderboard.exe
+/frontend/node_modules
+/public/dist

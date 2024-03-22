@@ -63,7 +63,7 @@ func (o RankingPipelineOptions) BuildFilters() mongo.Pipeline {
 		filteringPipeline = addFilterStage(filteringPipeline, "player.steamName", bson.D{{"$regex", steamName}, {"$options", "i"}})
 	}
 	if steamId, ok := o.Filters["steamId"].(string); ok && steamId != "" {
-		filteringPipeline = addFilterStage(filteringPipeline, "results.player.steamId", steamId)
+		filteringPipeline = addFilterStage(filteringPipeline, "player.steamId", steamId)
 	}
 	if gameId, ok := o.Filters["gameId"].(string); ok && gameId != "" {
 		filteringPipeline = addGameIdFilter(filteringPipeline, gameId)
@@ -72,6 +72,8 @@ func (o RankingPipelineOptions) BuildFilters() mongo.Pipeline {
 }
 
 type RankingResultsItem struct {
+	ExtraGameStatsData `bson:",inline"`
+
 	Player          SteamUserData `json:"player"`
 	Ranking         int           `json:"ranking"`
 	AverageWaveTime float64       `json:"averageWaveTime"`
@@ -107,7 +109,7 @@ func addGameIdFilter(filteringPipeline mongo.Pipeline, gameId string) mongo.Pipe
 		return filteringPipeline // Optionally return error
 	}
 	return append(filteringPipeline, bson.D{
-		{"$match", bson.D{{"results._id", oid}}},
+		{"$match", bson.D{{"_id", oid}}},
 	})
 }
 
@@ -139,10 +141,14 @@ func GetRankingPipeline(options RankingPipelineOptions) mongo.Pipeline {
 		{"player.steamId", "$results.player.steamId"},
 		{"player.steamName", "$results.player.steamName"},
 		{"averageWaveTime", "$results.averageWaveTime"},
-		{"gameEnd", "$results.gameEnd"},
-		{"gameStart", "$results.gameStart"},
 		{"totalGameTime", "$results.totalGameTime"},
 		{"wavesSurvived", "$results.wavesSurvived"},
+		{"damageDealt", "$results.damageDealt"},
+		{"enemiesKilled", "$results.enemiesKilled"},
+		{"essenceHarvested", "$results.essenceHarvested"},
+		{"essenceSpent", "$results.essenceSpent"},
+		{"towersBuilt", "$results.towersBuilt"},
+		{"upgradesPurchased", "$results.upgradesPurchased"},
 	}}}
 
 	facetStage := bson.D{
@@ -195,6 +201,7 @@ func GetRankingForGame(gameId primitive.ObjectID) (int, error) {
 		return 0, err
 	}
 	if len(results) == 0 {
+
 		return 0, errors.New("game not found")
 	}
 	return results[0].Ranking, nil
@@ -213,6 +220,8 @@ func GetAllRankings(options GetRankingsOptions) ([]RankingResultsItem, error) {
 
 	rankingOptions := RankingPipelineOptions{options, false}
 	pipeline := GetRankingPipeline(rankingOptions)
+
+	dumpPipeline(pipeline, rankingOptions)
 
 	var results []RankingResultsItem
 	err := collection.AggregateAll(pipeline, &results)
