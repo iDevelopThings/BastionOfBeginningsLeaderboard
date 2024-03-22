@@ -330,6 +330,13 @@ func HandleLinearWebhooks(c *routing.Context) error {
 }
 
 func UpdateIssuesFromWebhook(data LinearWebhookBody) {
+	if IssuesData == nil {
+		if err := LoadAllIssues(); err != nil {
+			logger.Error("Error loading issues: %v", err)
+			return
+		}
+		return
+	}
 	switch data.Action {
 	case "create":
 		{
