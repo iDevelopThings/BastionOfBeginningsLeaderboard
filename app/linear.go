@@ -6,6 +6,7 @@ import (
 	"html/template"
 	"io"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/yuin/goldmark"
@@ -133,7 +134,7 @@ func LoadAllIssues() error {
 	}
 
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", Config.GetString("LinearApiKey"))
+	req.Header.Set("Authorization", os.Getenv("LINEAR_API_KEY"))
 
 	// Make the request using the default client
 	client := &http.Client{}

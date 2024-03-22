@@ -4,6 +4,7 @@ import (
 	"errors"
 	"html/template"
 	"net/http"
+	"os"
 
 	routing "github.com/go-ozzo/ozzo-routing"
 	"github.com/go-ozzo/ozzo-routing/access"
@@ -34,7 +35,7 @@ type RoadMapPage struct {
 
 func AuthHandler(c *routing.Context) error {
 	return auth.Bearer(func(c *routing.Context, token string) (auth.Identity, error) {
-		if token == app.Config.GetString("ApiSecret") {
+		if token == os.Getenv("API_SECRET") {
 			return auth.Identity("LeaderboardApi"), nil
 		}
 		return nil, errors.New("invalid credential")
@@ -45,8 +46,8 @@ func main() {
 	app.Init()
 
 	db.CreateConnection(
-		app.Config.GetString("MongoUri"),
-		app.Config.GetString("MongoDatabaseName"),
+		os.Getenv("MONGO_URI"),
+		os.Getenv("MONGO_DATABASE_NAME"),
 	)
 
 	router := routing.New()
